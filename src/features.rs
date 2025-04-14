@@ -2,7 +2,7 @@ use crate::error::{McDataError, Edition};
 use crate::structs::Feature;
 use crate::version::{self, Version};
 use crate::loader::load_data_from_path;
-use crate::constants::MINECRAFT_DATA_SUBMODULE_PATH;
+use crate::constants::VENDORED_MINECRAFT_DATA_PATH;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::Path;
@@ -18,7 +18,7 @@ static BEDROCK_FEATURES: Lazy<Result<Arc<Vec<Feature>>, McDataError>> = Lazy::ne
 });
 
 fn load_features(edition: Edition) -> Result<Arc<Vec<Feature>>, McDataError> {
-    let path_str = format!("{}/data/{}/common/features.json", MINECRAFT_DATA_SUBMODULE_PATH, edition.path_prefix());
+    let path_str = format!("{}/{}/common/features.json", VENDORED_MINECRAFT_DATA_PATH, edition.path_prefix());
     let path = Path::new(&path_str);
     load_data_from_path(path).map(Arc::new)
 }

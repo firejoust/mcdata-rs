@@ -1,7 +1,7 @@
 use crate::error::McDataError;
 use crate::structs::ProtocolVersionInfo;
 use crate::loader::load_data_from_path;
-use crate::constants::MINECRAFT_DATA_SUBMODULE_PATH;
+use crate::constants::VENDORED_MINECRAFT_DATA_PATH;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::cmp::Ordering;
@@ -71,7 +71,7 @@ pub struct VersionData {
 }
 
 fn load_protocol_versions(edition: Edition) -> Result<Arc<VersionData>, McDataError> {
-    let path_str = format!("{}/data/{}/common/protocolVersions.json", MINECRAFT_DATA_SUBMODULE_PATH, edition.path_prefix());
+    let path_str = format!("{}/{}/common/protocolVersions.json", VENDORED_MINECRAFT_DATA_PATH, edition.path_prefix());
     let path = Path::new(&path_str);
     let mut raw_versions: Vec<ProtocolVersionInfo> = load_data_from_path(path)?;
 

@@ -3,13 +3,13 @@
 use crate::error::{McDataError, Edition};
 use crate::structs::DataPaths;
 use crate::loader::load_data_from_path;
-use crate::constants::MINECRAFT_DATA_SUBMODULE_PATH;
+use crate::constants::VENDORED_MINECRAFT_DATA_PATH;
 use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 static DATA_PATHS: Lazy<Result<Arc<DataPaths>, McDataError>> = Lazy::new(|| {
-    let path = Path::new(MINECRAFT_DATA_SUBMODULE_PATH).join("data/dataPaths.json");
+    let path = Path::new(VENDORED_MINECRAFT_DATA_PATH).join("dataPaths.json");
     load_data_from_path(&path).map(Arc::new)
 });
 
@@ -47,7 +47,7 @@ fn get_path_suffix(edition: Edition, version: &str, data_key: &str) -> Result<St
 /// Constructs the full, absolute path to a data file.
 pub fn get_full_data_path(edition: Edition, version: &str, data_key: &str) -> Result<PathBuf, McDataError> {
     let suffix = get_path_suffix(edition, version, data_key)?;
-    let base_path = PathBuf::from(MINECRAFT_DATA_SUBMODULE_PATH).join("data");
+    let base_path = PathBuf::from(VENDORED_MINECRAFT_DATA_PATH);
 
     // The suffix itself contains the edition, e.g., "pc/1.18.2"
     let relative_path = PathBuf::from(suffix);

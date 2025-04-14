@@ -152,7 +152,7 @@ impl IndexedData {
         let protocol_comments: Option<Value> = load_optional_value!("protocolComments");
         let login_packet: Option<Value> = load_optional_value!("loginPacket");
         let legacy: Option<Legacy> = loader::load_data_from_path(
-                &std::path::PathBuf::from(crate::constants::MINECRAFT_DATA_SUBMODULE_PATH)
+                &std::path::PathBuf::from(crate::constants::VENDORED_MINECRAFT_DATA_PATH)
                     .join(format!("data/{}/common/legacy.json", edition.path_prefix()))
             ).ok();
 
