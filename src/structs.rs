@@ -146,7 +146,7 @@ pub struct Entity {
 #[serde(rename_all = "camelCase")]
 pub struct Feature {
     pub name: String,
-    pub description: String,
+    pub description: Option<String>,
     #[serde(default)]
     pub values: Vec<FeatureValue>, // If present, use this
     pub version: Option<String>,   // If present (and values is empty), use this
