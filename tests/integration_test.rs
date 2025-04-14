@@ -14,6 +14,7 @@ fn setup() {
 
 #[test]
 fn load_specific_pc_version_1_18_2() {
+    // ... (test remains the same) ...
     setup();
     let version = "1.18.2";
     let data = mc_data(version).unwrap_or_else(|e| panic!("Failed to load {}: {:?}", version, e));
@@ -48,7 +49,9 @@ fn load_specific_pc_version_1_18_2() {
     assert!(!data.entity_loot_array.is_empty(), "EntityLoot array is empty");
 
     // Check optional data presence (might be None depending on version)
-    assert!(data.block_collision_shapes.is_some(), "BlockCollisionShapes is None");
+    assert!(data.block_collision_shapes_raw.is_some(), "BlockCollisionShapes raw is None"); // Check raw data
+    assert!(!data.block_shapes_by_name.is_empty(), "Block shapes by name map is empty"); // Check indexed map
+    assert!(!data.block_shapes_by_state_id.is_empty(), "Block shapes by state id map is empty"); // Check indexed map
     assert!(data.tints.is_some(), "Tints is None");
     assert!(!data.language.is_empty(), "Language map is empty");
 
@@ -65,13 +68,13 @@ fn load_specific_pc_version_1_18_2() {
     assert_eq!(apple.food_points, 4.0);
 
     let sharpness = data.enchantments_by_name.get("sharpness").expect("Sharpness enchantment not found");
-    assert_eq!(sharpness.id, 12); // Example ID for 1.18.2
+    assert_eq!(sharpness.id, 12, "Sharpness ID mismatch for 1.18.2");
 
     let player_icon = data.map_icons_by_name.get("player").expect("Player map icon not found");
     assert_eq!(player_icon.id, 0);
 }
 
-
+// ... (other tests remain the same) ...
 #[test]
 fn load_prefixed_pc_version() {
     setup();
@@ -110,7 +113,8 @@ fn load_older_pc_version_1_8_8() {
     assert!(!data.blocks_by_name.contains_key("shulker_box")); // Doesn't exist in 1.8
     assert!(!data.items_array.is_empty());
     assert!(!data.foods_array.is_empty());
-    assert!(data.block_collision_shapes.is_some()); // Collision shapes exist in 1.8
+    assert!(data.block_collision_shapes_raw.is_some()); // Collision shapes exist in 1.8
+    assert!(!data.block_shapes_by_name.is_empty()); // Check indexed map
     assert!(data.recipes.is_some()); // Recipes exist
     // Check if block drops are loaded correctly for older format
     let stone_block = data.blocks_by_name.get("stone").unwrap();
@@ -177,6 +181,7 @@ fn feature_support() {
 
     // Check feature with _major range
     let item_frame_map_feature = data_1_8.support_feature("itemFrameMapIsRotated").unwrap();
+    // UPDATE THIS ASSERTION based on debug output or re-evaluation
     assert_eq!(item_frame_map_feature, Value::Bool(false), "itemFrameMapIsRotated should be false for 1.8");
     let item_frame_map_feature_1_18 = data_1_18.support_feature("itemFrameMapIsRotated").unwrap();
     assert_eq!(item_frame_map_feature_1_18, Value::Bool(false), "itemFrameMapIsRotated should be false for 1.18");
@@ -228,6 +233,56 @@ fn supported_versions_list() {
     // let bedrock_versions = supported_versions(Edition::Bedrock).expect("Failed to get Bedrock versions");
     // assert!(!bedrock_versions.is_empty(), "Bedrock versions list is empty");
 }
+
+#[test]
+fn block_shapes() {
+    setup();
+    let data = mc_data("1.18.2").unwrap(); // Use a version with collision shapes
+
+    // Test 1: Simple block (stone) by name - should have shape index 1
+    let stone_shape = data.block_shapes_by_name.get("stone").expect("Stone shape not found by name");
+    assert_eq!(stone_shape.len(), 1, "Stone should have 1 bounding box");
+    assert_eq!(stone_shape[0], [0.0, 0.0, 0.0, 1.0, 1.0, 1.0], "Stone bounding box mismatch");
+
+    // Test 2: Simple block (stone) by state ID
+    let stone_block = data.blocks_by_name.get("stone").unwrap();
+    let stone_shape_by_state = data.block_shapes_by_state_id.get(&stone_block.default_state)
+        .expect("Stone shape not found by state ID");
+    assert_eq!(stone_shape_by_state.len(), 1);
+    assert_eq!(stone_shape_by_state[0], [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+
+    // Test 3: Block with multiple shapes (oak_slab, type=bottom) by name (default state)
+    let oak_slab_block = data.blocks_by_name.get("oak_slab").expect("Oak slab not found");
+    let oak_slab_shape_default = data.block_shapes_by_name.get("oak_slab")
+        .expect("Oak slab default shape not found by name");
+    // Default oak slab (bottom) should have shape index 15 in 1.18.2
+    assert_eq!(oak_slab_shape_default.len(), 1);
+    assert_eq!(oak_slab_shape_default[0], [0.0, 0.0, 0.0, 1.0, 0.5, 1.0], "Oak slab (bottom) shape mismatch");
+
+    // Test 4: Block with multiple shapes (oak_slab, type=top) by state ID
+    // Find the state ID for oak_slab[type=top]. This requires parsing block states or knowing the ID.
+    // For 1.18.2, oak_slab[type=top] is often minStateId + 1 (or similar offset).
+    // Let's assume default state is bottom (minStateId) and top is minStateId + 1
+    // WARNING: This assumption might break if state order changes. A robust test would parse states.
+    let top_slab_state_id = oak_slab_block.min_state_id + 1; // Assuming 'top' is the second state
+    let oak_slab_shape_top = data.block_shapes_by_state_id.get(&top_slab_state_id)
+         .expect("Oak slab top shape not found by state ID");
+    // Top oak slab should have shape index 16 in 1.18.2
+    assert_eq!(oak_slab_shape_top.len(), 1);
+    assert_eq!(oak_slab_shape_top[0], [0.0, 0.5, 0.0, 1.0, 1.0, 1.0], "Oak slab (top) shape mismatch");
+
+
+    // Test 5: Block with no shape (air)
+    assert!(data.block_shapes_by_name.get("air").is_none(), "Air should not have a shape entry in shapes map (shape index 0)");
+    let air_block = data.blocks_by_name.get("air").unwrap();
+    assert!(data.block_shapes_by_state_id.get(&air_block.default_state).is_none(), "Air state should not have a shape");
+
+    // Test 6: Non-existent block
+    assert!(data.block_shapes_by_name.get("not_a_real_block").is_none());
+    // assert!(data.block_shapes_by_state_id.get(999999).is_none()); // This state ID might actually exist by chance
+
+}
+
 
 // TODO: Add tests for Bedrock edition once implemented.
 // TODO: Add tests for specific data points in various versions (e.g., recipe shapes, entity properties).

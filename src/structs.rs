@@ -236,13 +236,21 @@ pub struct Sound {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)] // Try to deserialize as Single first, then Multiple
+pub enum BlockShapeRef {
+    Single(u32),
+    Multiple(Vec<u32>), // Represents shape indices per metadata/state
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockCollisionShapes {
-    // Block name -> Shape index/indices
-    pub blocks: HashMap<String, serde_json::Value>, // Use Value due to number | number[] variation
-    // Shape index (as string) -> Array of bounding boxes ([x1, y1, z1, x2, y2, z2])
-    pub shapes: HashMap<String, Vec<[f64; 6]>>, // Assuming f64 for precision
+    // Block name -> Shape index or indices
+    pub blocks: HashMap<String, BlockShapeRef>,
+    // Shape index (as string key) -> Array of bounding boxes ([x1, y1, z1, x2, y2, z2])
+    pub shapes: HashMap<String, Vec<[f64; 6]>>, // Keep f64 for precision
 }
+
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]

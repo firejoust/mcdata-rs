@@ -15,6 +15,7 @@ pub struct IndexedData {
     pub version: Version, // The resolved canonical version
 
     // --- Indexed Data ---
+    // ... (other indexed fields remain the same) ...
     pub blocks_array: Arc<Vec<Block>>,
     pub blocks_by_id: Arc<HashMap<u32, Block>>,
     pub blocks_by_name: Arc<HashMap<String, Block>>,
@@ -76,8 +77,13 @@ pub struct IndexedData {
     pub entity_loot_array: Arc<Vec<EntityLoot>>,
     pub entity_loot_by_name: Arc<HashMap<String, EntityLoot>>,
 
+    // --- NEW: Indexed Block Shapes ---
+    pub block_shapes_by_state_id: Arc<HashMap<u32, Vec<[f64; 6]>>>,
+    pub block_shapes_by_name: Arc<HashMap<String, Vec<[f64; 6]>>>, // Default state shape
+
     // --- Less Structured Data ---
-    pub block_collision_shapes: Arc<Option<BlockCollisionShapes>>,
+    // Keep the raw data if needed for debugging or direct access
+    pub block_collision_shapes_raw: Arc<Option<BlockCollisionShapes>>,
     pub tints: Arc<Option<Tints>>,
     pub language: Arc<HashMap<String, String>>,
     pub legacy: Arc<Option<Legacy>>, // Common data
@@ -94,7 +100,7 @@ pub struct IndexedData {
 impl IndexedData {
     /// Loads and indexes all data for the given canonical version.
     pub fn load(version: Version) -> Result<Self, McDataError> {
-        // Use major_version for loading paths as per node-minecraft-data logic
+        // ... (macros and initial loading remain the same) ...
         let major_version_str = &version.major_version;
         let edition = version.edition;
 
@@ -121,11 +127,8 @@ impl IndexedData {
 
 
         // --- Load Raw Data ---
-        // Mandatory (assuming these exist for most versions, adjust if needed)
         let blocks: Vec<Block> = loader::load_data(edition, major_version_str, "blocks")?;
         let items: Vec<Item> = loader::load_data(edition, major_version_str, "items")?;
-
-        // Optional (provide default empty collections) - Use the macro
         let biomes: Vec<Biome> = load_optional!("biomes", Vec<Biome>).unwrap_or_default();
         let effects: Vec<Effect> = load_optional!("effects", Vec<Effect>).unwrap_or_default();
         let entities: Vec<Entity> = load_optional!("entities", Vec<Entity>).unwrap_or_default();
@@ -139,25 +142,19 @@ impl IndexedData {
         let windows: Vec<Window> = load_optional!("windows", Vec<Window>).unwrap_or_default();
         let block_loot: Vec<BlockLoot> = load_optional!("blockLoot", Vec<BlockLoot>).unwrap_or_default();
         let entity_loot: Vec<EntityLoot> = load_optional!("entityLoot", Vec<EntityLoot>).unwrap_or_default();
-
-        // Optional structs/maps - Use the macro
-        let block_collision_shapes: Option<BlockCollisionShapes> = load_optional!("blockCollisionShapes", BlockCollisionShapes);
+        let block_collision_shapes_raw: Option<BlockCollisionShapes> = load_optional!("blockCollisionShapes", BlockCollisionShapes); // Load raw shapes
         let tints: Option<Tints> = load_optional!("tints", Tints);
         let language: HashMap<String, String> = load_optional!("language", HashMap<String, String>).unwrap_or_default();
-
-        // Optional raw values - Use the macro
         let recipes: Option<Value> = load_optional_value!("recipes");
         let materials: Option<Value> = load_optional_value!("materials");
         let commands: Option<Value> = load_optional_value!("commands");
         let protocol: Option<Value> = load_optional_value!("protocol");
         let protocol_comments: Option<Value> = load_optional_value!("protocolComments");
         let login_packet: Option<Value> = load_optional_value!("loginPacket");
-
-        // Common data (loaded once, could be optimized but fine here for now)
         let legacy: Option<Legacy> = loader::load_data_from_path(
                 &std::path::PathBuf::from(crate::constants::MINECRAFT_DATA_SUBMODULE_PATH)
                     .join(format!("data/{}/common/legacy.json", edition.path_prefix()))
-            ).ok(); // Ignore errors for common data for now
+            ).ok();
 
 
         // --- Index Data ---
@@ -176,6 +173,16 @@ impl IndexedData {
         let (windows_by_id, windows_by_name) = indexer::index_windows(&windows);
         let block_loot_by_name = indexer::index_block_loot(&block_loot);
         let entity_loot_by_name = indexer::index_entity_loot(&entity_loot);
+
+        // --- Index Block Shapes ---
+        let (block_shapes_by_state_id, block_shapes_by_name) =
+            if let Some(ref collision_data) = block_collision_shapes_raw {
+                indexer::index_block_shapes(&blocks_by_state_id, &blocks_by_name, collision_data)
+            } else {
+                // Return empty maps if collision data doesn't exist for this version
+                (HashMap::new(), HashMap::new())
+            };
+
 
         Ok(IndexedData {
             version,
@@ -227,8 +234,11 @@ impl IndexedData {
             windows_by_name: Arc::new(windows_by_name),
             block_loot_by_name: Arc::new(block_loot_by_name),
             entity_loot_by_name: Arc::new(entity_loot_by_name),
+            // Indexed Shapes
+            block_shapes_by_state_id: Arc::new(block_shapes_by_state_id),
+            block_shapes_by_name: Arc::new(block_shapes_by_name),
             // Other Data
-            block_collision_shapes: Arc::new(block_collision_shapes),
+            block_collision_shapes_raw: Arc::new(block_collision_shapes_raw), // Keep raw data if needed
             tints: Arc::new(tints),
             language: Arc::new(language),
             legacy: Arc::new(legacy),
@@ -244,6 +254,7 @@ impl IndexedData {
 
     /// Checks if the current version is newer than or equal to the other version string.
     pub fn is_newer_or_equal_to(&self, other_version_str: &str) -> Result<bool, McDataError> {
+        // ... (implementation remains the same) ...
         let other_version = crate::version::resolve_version(other_version_str)?;
         // Ensure comparison happens only within the same edition
         if self.version.edition == other_version.edition {
@@ -258,6 +269,7 @@ impl IndexedData {
 
     /// Checks if the current version is older than the other version string.
      pub fn is_older_than(&self, other_version_str: &str) -> Result<bool, McDataError> {
+         // ... (implementation remains the same) ...
          let other_version = crate::version::resolve_version(other_version_str)?;
           // Ensure comparison happens only within the same edition
          if self.version.edition == other_version.edition {
@@ -272,11 +284,16 @@ impl IndexedData {
 
     /// Checks support for a feature, returning the feature's value (often boolean).
     pub fn support_feature(&self, feature_name: &str) -> Result<Value, McDataError> {
+        // ... (implementation remains the same) ...
         features::get_feature_support(&self.version, feature_name)
     }
+
+    // REMOVED get_block_shape_by_state_id
+    // REMOVED get_block_shape_by_name
 
     // Convenience methods to get specific data by name/id could be added here
     // e.g., pub fn block_by_name(&self, name: &str) -> Option<&Block> { self.blocks_by_name.get(name) }
     // pub fn food_by_name(&self, name: &str) -> Option<&Food> { self.foods_by_name.get(name) }
     // pub fn particle_by_id(&self, id: u32) -> Option<&Particle> { self.particles_by_id.get(&id) }
+    // pub fn block_shape_by_name(&self, name: &str) -> Option<&Vec<[f64; 6]>> { self.block_shapes_by_name.get(name) }
 }

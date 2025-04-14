@@ -1,10 +1,13 @@
+// src/indexer.rs
 use crate::structs::{
     Block, Item, Biome, Effect, Entity, Sound, Particle, Attribute, Instrument, Food, Enchantment,
-    MapIcon, Window, BlockLoot, EntityLoot, /* add others */
+    MapIcon, Window, BlockLoot, EntityLoot, BlockCollisionShapes, BlockShapeRef,
 };
 use std::collections::HashMap;
+use log;
 
 // --- Helper Macro for Indexing ---
+// ... (index_by_field macro remains the same) ...
 macro_rules! index_by_field {
     ($data:expr, $field:ident, $key_type:ty) => {
         $data.iter().map(|item| (item.$field.clone() as $key_type, item.clone())).collect()
@@ -18,9 +21,11 @@ macro_rules! index_by_field {
     };
 }
 
+
 // --- Indexing Functions ---
 
 pub fn index_blocks(blocks: &[Block]) -> (HashMap<u32, Block>, HashMap<String, Block>, HashMap<u32, Block>) {
+    // ... (implementation remains the same) ...
     let mut blocks_with_states = Vec::with_capacity(blocks.len());
     let mut blocks_by_state_id = HashMap::new();
 
@@ -49,7 +54,7 @@ pub fn index_blocks(blocks: &[Block]) -> (HashMap<u32, Block>, HashMap<String, B
     (blocks_by_id, blocks_by_name, blocks_by_state_id)
 }
 
-
+// ... (other index functions remain the same) ...
 pub fn index_items(items: &[Item]) -> (HashMap<u32, Item>, HashMap<String, Item>) {
     let items_by_id: HashMap<u32, Item> = index_by_field!(items, id, u32);
     let items_by_name: HashMap<String, Item> = index_by_field!(items, name, String);
@@ -139,4 +144,67 @@ pub fn index_block_loot(block_loot: &[BlockLoot]) -> HashMap<String, BlockLoot> 
 
 pub fn index_entity_loot(entity_loot: &[EntityLoot]) -> HashMap<String, EntityLoot> {
     index_by_field!(entity_loot, entity, String)
+}
+
+
+/// Creates HashMaps mapping state IDs and block names (default state) to their collision shapes.
+pub fn index_block_shapes(
+    blocks_by_state_id: &HashMap<u32, Block>,
+    blocks_by_name: &HashMap<String, Block>,
+    collision_data: &BlockCollisionShapes,
+) -> (HashMap<u32, Vec<[f64; 6]>>, HashMap<String, Vec<[f64; 6]>>) {
+    log::debug!("Indexing block shapes...");
+    let mut shapes_by_state_id = HashMap::new();
+    let mut shapes_by_name = HashMap::new();
+
+    for (state_id, block) in blocks_by_state_id.iter() {
+        if let Some(shape_ref) = collision_data.blocks.get(&block.name) {
+            let shape_index_result: Option<u32> = match shape_ref {
+                BlockShapeRef::Single(index) => Some(*index),
+                BlockShapeRef::Multiple(indices) => {
+                    let offset_res = state_id.checked_sub(block.min_state_id);
+                    if offset_res.is_none() {
+                         log::warn!("State ID {} < minStateId {} for block {}", state_id, block.min_state_id, block.name);
+                    }
+                    offset_res.and_then(|offset| {
+                        let shape_idx = indices.get(offset as usize).copied();
+                        if shape_idx.is_none() {
+                             log::warn!("Offset {} out of bounds (len {}) for block {} state {}", offset, indices.len(), block.name, state_id);
+                        }
+                        shape_idx
+                    })
+                }
+            };
+
+            if let Some(shape_index) = shape_index_result {
+                if shape_index == 0 { // Shape 0 means no collision box
+                    continue;
+                }
+                if let Some(shape_vec) = collision_data.shapes.get(&shape_index.to_string()) {
+                    shapes_by_state_id.insert(*state_id, shape_vec.clone());
+                } else {
+                     log::warn!("Shape index {} found for block {} state {}, but not found in shapes map.", shape_index, block.name, state_id);
+                }
+            } // else: Shape index calculation failed (logged above) or block not in collision data
+        } else if block.name != "air" { // Don't warn for air
+             log::warn!("Block '{}' not found in blockCollisionShapes.blocks map.", block.name);
+        }
+    }
+
+    log::debug!("Populating shapes_by_name map...");
+    for (name, block) in blocks_by_name.iter() {
+        if let Some(shape) = shapes_by_state_id.get(&block.default_state) {
+             shapes_by_name.insert(name.clone(), shape.clone());
+        } else {
+            // Log only if the block wasn't expected to be shapeless (like air)
+            let is_shapeless = collision_data.blocks.get(name)
+                .map_or(true, |shape_ref| matches!(shape_ref, BlockShapeRef::Single(0))); // Check if shape ref is 0
+            if !is_shapeless {
+                 log::warn!("Default state shape not found for block '{}' (defaultState: {})", name, block.default_state);
+            }
+        }
+    }
+    log::debug!("Finished indexing block shapes.");
+
+    (shapes_by_state_id, shapes_by_name)
 }
