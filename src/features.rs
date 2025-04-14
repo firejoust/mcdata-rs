@@ -1,6 +1,6 @@
 use crate::error::{McDataError, Edition};
 use crate::structs::Feature;
-use crate::version::Version;
+use crate::version::{self, Version};
 use crate::loader::load_data_from_path;
 use crate::constants::MINECRAFT_DATA_SUBMODULE_PATH;
 use once_cell::sync::Lazy;
@@ -42,7 +42,9 @@ fn get_features(edition: Edition) -> Result<Arc<Vec<Feature>>, McDataError> {
 static RESOLVED_VERSION_CACHE: Lazy<std::sync::RwLock<HashMap<(Edition, String), Version>>> =
     Lazy::new(Default::default);
 
+// Keep the existing resolve_cached_version for non-_major strings
 fn resolve_cached_version(edition: Edition, version_str: &str) -> Result<Version, McDataError> {
+    // (Implementation remains the same as your last version)
     let cache_key = (edition, version_str.to_string());
     // Check read cache
     {
@@ -72,24 +74,58 @@ fn resolve_cached_version(edition: Edition, version_str: &str) -> Result<Version
 }
 
 
+// --- Updated is_version_in_range ---
+
 fn is_version_in_range(target_version: &Version, min_ver_str: &str, max_ver_str: &str) -> Result<bool, McDataError> {
-    // Special case: "latest"
-    let max_is_latest = max_ver_str == "latest";
+    let edition = target_version.edition;
 
-    // Resolve min version
-    let min_ver = resolve_cached_version(target_version.edition, min_ver_str)?;
-
-    if max_is_latest {
-        Ok(target_version >= &min_ver)
+    // --- Handle min_ver_str ---
+    let min_ver = if let Some(base_major) = min_ver_str.strip_suffix("_major") {
+        // Handle _major suffix: Find the OLDEST version in that major range
+        let version_data = version::get_version_data(edition)?; // Get protocol versions data
+        version_data
+            .by_major_version
+            .get(base_major)
+            .and_then(|versions| versions.last()) // Get the last element (oldest)
+            .cloned() // Clone the Version struct
+            .ok_or_else(|| McDataError::InvalidVersion(format!("{}_{}", edition.path_prefix(), min_ver_str)))?
     } else {
-        // Resolve max version
-        let max_ver = resolve_cached_version(target_version.edition, max_ver_str)?;
-        Ok(target_version >= &min_ver && target_version <= &max_ver)
-    }
+        // Resolve normally
+        resolve_cached_version(edition, min_ver_str)?
+    };
+
+    // --- Handle max_ver_str ---
+    let max_ver = if max_ver_str == "latest" {
+        // Handle "latest": Find the absolute newest version for the edition
+        let version_data = version::get_version_data(edition)?;
+        version_data
+            .by_minecraft_version // Use this map as it contains all versions
+            .values()
+            .max() // Find the version with the highest data_version
+            .cloned()
+            .ok_or_else(|| McDataError::Internal("Could not determine latest version".to_string()))?
+    } else if let Some(base_major) = max_ver_str.strip_suffix("_major") {
+        // Handle _major suffix: Find the NEWEST version in that major range
+        let version_data = version::get_version_data(edition)?;
+        version_data
+            .by_major_version
+            .get(base_major)
+            .and_then(|versions| versions.first()) // Get the first element (newest)
+            .cloned()
+            .ok_or_else(|| McDataError::InvalidVersion(format!("{}_{}", edition.path_prefix(), max_ver_str)))?
+    } else {
+        // Resolve normally
+        resolve_cached_version(edition, max_ver_str)?
+    };
+
+    // --- Perform Comparison ---
+    Ok(target_version >= &min_ver && target_version <= &max_ver)
 }
 
 
+// --- get_feature_support remains the same ---
 pub fn get_feature_support(target_version: &Version, feature_name: &str) -> Result<Value, McDataError> {
+    // (Implementation remains the same as your last version)
     let features = get_features(target_version.edition)?;
 
     // Find the feature by name (last one wins in case of duplicates, like node-minecraft-data)

@@ -117,7 +117,7 @@ fn load_protocol_versions(edition: Edition) -> Result<Arc<VersionData>, McDataEr
     }))
 }
 
-fn get_version_data(edition: Edition) -> Result<Arc<VersionData>, McDataError> {
+pub fn get_version_data(edition: Edition) -> Result<Arc<VersionData>, McDataError> {
   let lazy_ref = match edition {
      Edition::Pc => &PC_PROTOCOL_VERSIONS,
      Edition::Bedrock => &BEDROCK_PROTOCOL_VERSIONS,

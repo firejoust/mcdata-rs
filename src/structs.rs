@@ -1,3 +1,5 @@
+// src/structs.rs
+
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -46,12 +48,12 @@ pub struct Block {
     pub diggable: bool,
     pub bounding_box: String, // "block" or "empty"
     pub material: Option<String>,
-    #[serde(default)] // Default to empty vec if missing
+    #[serde(default)] // Default to empty map if missing
     pub harvest_tools: HashMap<String, bool>,
     #[serde(default)]
     pub variations: Option<Vec<BlockVariation>>,
     #[serde(default)]
-    pub drops: Vec<u32>,
+    pub drops: Vec<BlockDrop>, // Use the new enum to handle complex/simple drops
     #[serde(default)]
     pub emit_light: u8,
     #[serde(default)]
@@ -135,8 +137,8 @@ pub struct Entity {
     pub display_name: String,
     #[serde(rename = "type")]
     pub entity_type: String, // "mob", "object", "projectile", etc.
-    pub width: f32,
-    pub height: f32,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
     pub category: Option<String>,
 }
 
@@ -146,7 +148,7 @@ pub struct Entity {
 #[serde(rename_all = "camelCase")]
 pub struct Feature {
     pub name: String,
-    pub description: Option<String>,
+    pub description: Option<String>, // Made optional previously
     #[serde(default)]
     pub values: Vec<FeatureValue>, // If present, use this
     pub version: Option<String>,   // If present (and values is empty), use this
@@ -170,4 +172,36 @@ pub struct FeatureValue {
 pub struct DataPaths {
     pub pc: HashMap<String, HashMap<String, String>>,
     pub bedrock: HashMap<String, HashMap<String, String>>,
+}
+
+// --- Drop Structs (for older block formats like 1.8) ---
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct DropItem {
+    pub id: u32,
+    pub metadata: u32,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)] // Allows deserializing as either a u32 or a DropItem object
+pub enum DropType {
+    Id(u32),
+    Item(DropItem),
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DropElement {
+    pub drop: DropType, // The actual item dropped (can be simple ID or complex)
+    // Using f32 for counts as seen in some older JSON, though Option<u32> might be safer
+    // if they are always intended to be whole numbers. Serde handles number conversion.
+    pub min_count: Option<f32>,
+    pub max_count: Option<f32>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)] // Allows deserializing as either a simple u32 ID or a DropElement object
+pub enum BlockDrop {
+    Id(u32),
+    Element(DropElement),
 }
