@@ -1,6 +1,8 @@
+use crate::structs::{
+    Block, Item, Biome, Effect, Entity, Sound, Particle, Attribute, Instrument, Food, Enchantment,
+    MapIcon, Window, BlockLoot, EntityLoot, /* add others */
+};
 use std::collections::HashMap;
-
-use crate::{Biome, Block, Effect, Entity, Item};
 
 // --- Helper Macro for Indexing ---
 macro_rules! index_by_field {
@@ -15,9 +17,6 @@ macro_rules! index_by_field {
         }
     };
 }
-
-// REMOVED index_option_by_field macro
-
 
 // --- Indexing Functions ---
 
@@ -74,16 +73,70 @@ pub fn index_biomes(biomes: &[Biome]) -> (HashMap<u32, Biome>, HashMap<String, B
      let by_name: HashMap<String, Entity> = index_by_field!(entities, name, String);
 
      let mobs_by_id = entities.iter()
-         .filter(|e| e.entity_type == "mob")
+         .filter(|e| e.entity_type == "mob") // Simple check, might need refinement
          .map(|e| (e.id, e.clone()))
          .collect();
 
      let objects_by_id = entities.iter()
-         .filter(|e| e.entity_type == "object") // Or other non-mob types considered "objects"
+         .filter(|e| e.entity_type == "object") // Simple check
          .map(|e| (e.id, e.clone()))
          .collect();
 
      (by_id, by_name, mobs_by_id, objects_by_id)
  }
 
-// Add similar functions for enchantments, particles, windows, etc.
+ pub fn index_sounds(sounds: &[Sound]) -> (HashMap<u32, Sound>, HashMap<String, Sound>) {
+    let by_id: HashMap<u32, Sound> = index_by_field!(sounds, id, u32);
+    let by_name: HashMap<String, Sound> = index_by_field!(sounds, name, String);
+    (by_id, by_name)
+}
+
+pub fn index_particles(particles: &[Particle]) -> (HashMap<u32, Particle>, HashMap<String, Particle>) {
+    let by_id: HashMap<u32, Particle> = index_by_field!(particles, id, u32);
+    let by_name: HashMap<String, Particle> = index_by_field!(particles, name, String);
+    (by_id, by_name)
+}
+
+pub fn index_attributes(attributes: &[Attribute]) -> (HashMap<String, Attribute>, HashMap<String, Attribute>) {
+    let by_name: HashMap<String, Attribute> = index_by_field!(attributes, name, String);
+    let by_resource: HashMap<String, Attribute> = index_by_field!(attributes, resource, String);
+    (by_name, by_resource)
+}
+
+pub fn index_instruments(instruments: &[Instrument]) -> (HashMap<u32, Instrument>, HashMap<String, Instrument>) {
+    let by_id: HashMap<u32, Instrument> = index_by_field!(instruments, id, u32);
+    let by_name: HashMap<String, Instrument> = index_by_field!(instruments, name, String);
+    (by_id, by_name)
+}
+
+pub fn index_foods(foods: &[Food]) -> (HashMap<u32, Food>, HashMap<String, Food>) {
+    let by_id: HashMap<u32, Food> = index_by_field!(foods, id, u32);
+    let by_name: HashMap<String, Food> = index_by_field!(foods, name, String);
+    (by_id, by_name)
+}
+
+pub fn index_enchantments(enchantments: &[Enchantment]) -> (HashMap<u32, Enchantment>, HashMap<String, Enchantment>) {
+    let by_id: HashMap<u32, Enchantment> = index_by_field!(enchantments, id, u32);
+    let by_name: HashMap<String, Enchantment> = index_by_field!(enchantments, name, String);
+    (by_id, by_name)
+}
+
+pub fn index_map_icons(map_icons: &[MapIcon]) -> (HashMap<u32, MapIcon>, HashMap<String, MapIcon>) {
+    let by_id: HashMap<u32, MapIcon> = index_by_field!(map_icons, id, u32);
+    let by_name: HashMap<String, MapIcon> = index_by_field!(map_icons, name, String);
+    (by_id, by_name)
+}
+
+pub fn index_windows(windows: &[Window]) -> (HashMap<String, Window>, HashMap<String, Window>) {
+    let by_id: HashMap<String, Window> = index_by_field!(windows, id, String);
+    let by_name: HashMap<String, Window> = index_by_field!(windows, name, String);
+    (by_id, by_name)
+}
+
+pub fn index_block_loot(block_loot: &[BlockLoot]) -> HashMap<String, BlockLoot> {
+    index_by_field!(block_loot, block, String)
+}
+
+pub fn index_entity_loot(entity_loot: &[EntityLoot]) -> HashMap<String, EntityLoot> {
+    index_by_field!(entity_loot, entity, String)
+}

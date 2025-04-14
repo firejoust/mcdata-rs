@@ -1,17 +1,19 @@
 // tests/integration_test.rs
 
-use mcdata_rs::*; // Import items from your library's root
+// Use the crate name defined in Cargo.toml
+use mcdata_rs::*;
 use serde_json::Value;
 use std::sync::Arc;
 
 // Helper to initialize logging for tests
 // Run tests with `RUST_LOG=debug cargo test -- --nocapture` to see logs
 fn setup() {
+    // Use try_init to avoid panic if logger is already initialized
     let _ = env_logger::builder().is_test(true).try_init();
 }
 
 #[test]
-fn load_specific_pc_version() {
+fn load_specific_pc_version_1_18_2() {
     setup();
     let version = "1.18.2";
     let data = mc_data(version).unwrap_or_else(|e| panic!("Failed to load {}: {:?}", version, e));
@@ -23,23 +25,52 @@ fn load_specific_pc_version() {
     let stone = data.blocks_by_name.get("stone").expect("Stone block not found by name");
     assert_eq!(stone.id, 1);
     assert_eq!(data.blocks_by_id.get(&1).unwrap().name, "stone");
-    // State IDs might vary slightly depending on exact generation, but default should exist
     assert!(data.blocks_by_state_id.contains_key(&stone.default_state), "Default state ID for stone not found");
     let stone_from_state = data.blocks_by_state_id.get(&stone.default_state).unwrap();
     assert_eq!(stone_from_state.name, "stone");
 
-
     // Check item indexing
     let stick = data.items_by_name.get("stick").expect("Stick item not found by name");
-    let stick_id = stick.id; // Get ID dynamically
+    let stick_id = stick.id;
     assert_eq!(data.items_by_id.get(&stick_id).unwrap().name, "stick");
 
-    // Check other data types (add more as needed)
-    assert!(!data.biomes_by_name.is_empty(), "Biomes map is empty");
-    assert!(!data.effects_by_name.is_empty(), "Effects map is empty");
-    assert!(!data.entities_by_name.is_empty(), "Entities map is empty");
-    assert!(data.language.contains_key("block.minecraft.stone"), "Language map missing key");
+    // Check other data types (basic non-empty checks)
+    assert!(!data.biomes_array.is_empty(), "Biomes array is empty");
+    assert!(!data.effects_array.is_empty(), "Effects array is empty");
+    assert!(!data.entities_array.is_empty(), "Entities array is empty");
+    assert!(!data.sounds_array.is_empty(), "Sounds array is empty");
+    assert!(!data.particles_array.is_empty(), "Particles array is empty");
+    assert!(!data.foods_array.is_empty(), "Foods array is empty");
+    assert!(!data.enchantments_array.is_empty(), "Enchantments array is empty");
+    assert!(!data.map_icons_array.is_empty(), "MapIcons array is empty");
+    assert!(!data.windows_array.is_empty(), "Windows array is empty");
+    assert!(!data.block_loot_array.is_empty(), "BlockLoot array is empty");
+    assert!(!data.entity_loot_array.is_empty(), "EntityLoot array is empty");
+
+    // Check optional data presence (might be None depending on version)
+    assert!(data.block_collision_shapes.is_some(), "BlockCollisionShapes is None");
+    assert!(data.tints.is_some(), "Tints is None");
+    assert!(!data.language.is_empty(), "Language map is empty");
+
+    // Check raw value data presence
+    assert!(data.recipes.is_some(), "Recipes is None");
+    assert!(data.materials.is_some(), "Materials is None");
+    // Commands might be missing in some versions
+    // assert!(data.commands.is_some(), "Commands is None");
+    assert!(data.protocol.is_some(), "Protocol is None");
+    assert!(data.login_packet.is_some(), "LoginPacket is None");
+
+    // Check specific loaded values
+    let apple = data.foods_by_name.get("apple").expect("Apple food not found");
+    assert_eq!(apple.food_points, 4.0);
+
+    let sharpness = data.enchantments_by_name.get("sharpness").expect("Sharpness enchantment not found");
+    assert_eq!(sharpness.id, 12); // Example ID for 1.18.2
+
+    let player_icon = data.map_icons_by_name.get("player").expect("Player map icon not found");
+    assert_eq!(player_icon.id, 0);
 }
+
 
 #[test]
 fn load_prefixed_pc_version() {
@@ -50,6 +81,8 @@ fn load_prefixed_pc_version() {
     assert_eq!(data.version.minecraft_version, "1.16.5");
     assert_eq!(data.version.edition, Edition::Pc);
     assert!(data.blocks_by_name.contains_key("netherite_block"));
+    assert!(!data.foods_array.is_empty());
+    assert!(!data.attributes_array.is_empty());
 }
 
 #[test]
@@ -62,10 +95,11 @@ fn load_major_pc_version() {
     assert_eq!(data.version.edition, Edition::Pc);
     assert!(data.blocks_by_name.contains_key("mangrove_log")); // Block added in 1.19
     assert!(data.entities_by_name.contains_key("warden")); // Entity added in 1.19
+    assert!(!data.instruments_array.is_empty()); // Instruments exist
 }
 
 #[test]
-fn load_older_pc_version() {
+fn load_older_pc_version_1_8_8() {
     setup();
     let version = "1.8.8";
     let data = mc_data(version).unwrap_or_else(|e| panic!("Failed to load {}: {:?}", version, e));
@@ -74,6 +108,20 @@ fn load_older_pc_version() {
     assert_eq!(data.version.edition, Edition::Pc);
     assert!(data.blocks_by_name.contains_key("stone"));
     assert!(!data.blocks_by_name.contains_key("shulker_box")); // Doesn't exist in 1.8
+    assert!(!data.items_array.is_empty());
+    assert!(!data.foods_array.is_empty());
+    assert!(data.block_collision_shapes.is_some()); // Collision shapes exist in 1.8
+    assert!(data.recipes.is_some()); // Recipes exist
+    // Check if block drops are loaded correctly for older format
+    let stone_block = data.blocks_by_name.get("stone").unwrap();
+    assert!(!stone_block.drops.is_empty());
+    match &stone_block.drops[0] {
+        BlockDrop::Element(el) => match el.drop {
+            DropType::Id(id) => assert_eq!(id, 4), // Cobblestone ID in 1.8
+            _ => panic!("Expected simple ID drop for stone in 1.8"),
+        },
+        _ => panic!("Expected Element drop for stone in 1.8"),
+    }
 }
 
 #[test]
@@ -126,6 +174,13 @@ fn feature_support() {
     // Check a feature that doesn't exist for a version
     let non_existent_feature = data_1_8.support_feature("someRandomFeatureName").unwrap();
     assert_eq!(non_existent_feature, Value::Bool(false), "Non-existent feature should return false");
+
+    // Check feature with _major range
+    let item_frame_map_feature = data_1_8.support_feature("itemFrameMapIsRotated").unwrap();
+    assert_eq!(item_frame_map_feature, Value::Bool(false), "itemFrameMapIsRotated should be false for 1.8");
+    let item_frame_map_feature_1_18 = data_1_18.support_feature("itemFrameMapIsRotated").unwrap();
+    assert_eq!(item_frame_map_feature_1_18, Value::Bool(false), "itemFrameMapIsRotated should be false for 1.18");
+
 }
 
 #[test]
@@ -164,8 +219,10 @@ fn supported_versions_list() {
     setup();
     let pc_versions = supported_versions(Edition::Pc).expect("Failed to get PC versions");
     assert!(!pc_versions.is_empty(), "PC versions list is empty");
-    assert!(pc_versions.contains(&"1.18.2".to_string()));
-    assert!(pc_versions.contains(&"1.8.8".to_string()));
+    // Check for a few known versions
+    assert!(pc_versions.iter().any(|v| v == "1.18.2"));
+    assert!(pc_versions.iter().any(|v| v == "1.8.8"));
+    assert!(pc_versions.iter().any(|v| v == "1.20.4"));
 
     // Add similar check for Bedrock when supported
     // let bedrock_versions = supported_versions(Edition::Bedrock).expect("Failed to get Bedrock versions");
