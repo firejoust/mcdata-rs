@@ -1,0 +1,54 @@
+name: Create GitHub Release on Tag
+
+# Trigger the workflow when a tag matching v*.*.* (e.g., v0.1.0, v1.2.3) is pushed.
+# This typically happens as part of the `cargo publish` process (often via `cargo release`).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  # Required permission to create a GitHub Release.
+  contents: write
+
+jobs:
+  create-release:
+    name: Create Draft Release
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout the code
+      # Although we don't build anything here, checking out might be useful
+      # if you later want to attach assets or read a CHANGELOG file.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Create the Draft Release
+      # Uses the official action to create a release associated with the pushed tag.
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          # The GITHUB_TOKEN is automatically provided by GitHub Actions
+          # and has the necessary permissions when `permissions.contents` is set to `write`.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Use the tag name that triggered the workflow (e.g., "v0.1.0").
+          tag_name: ${{ github.ref_name }}
+          # Name the release descriptively (e.g., "Release v0.1.0").
+          release_name: Release ${{ github.ref_name }}
+          # Set the release body.
+          # You can customize this. A common practice is to add a placeholder
+          # prompting for manual updates, or try to extract notes from CHANGELOG.md.
+          body: |
+            Automated draft release for tag ${{ github.ref_name }}.
+
+            **TODO:** Please review and update these release notes with details from the CHANGELOG or commit history before publishing.
+          # Create the release as a draft. Set to `false` to publish immediately (less common for automated flows).
+          draft: true
+          # Mark as a pre-release? Set to `true` if your tag indicates a pre-release (e.g., v1.0.0-beta.1).
+          # You might want to make this conditional based on the tag name later.
+          prerelease: false
+
+      # Optional Step 3: Output the Release URL (useful for logs/notifications)
+      - name: Output Release URL
+        run: echo "Draft release created at ${{ steps.create_release.outputs.html_url }}"
