@@ -2,6 +2,13 @@
 name = "mcdata-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["firejoust <deity-sapling-coma@duck.com>"]
+description = "Library to access Minecraft data provided by PrismarineJS/minecraft-data"
+license = "MIT"
+repository = "https://github.com/firejoust/mcdata-rs"
+readme = "README.md"
+keywords = ["minecraft", "data", "protocol", "gamedata"]
+categories = ["games", "parser-implementations"]
 
 [dependencies]
 dirs-next = "2.0.0"
