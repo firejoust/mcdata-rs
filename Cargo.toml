@@ -10,6 +10,10 @@ readme = "README.md"
 keywords = ["minecraft", "data", "protocol", "gamedata"]
 categories = ["games", "parser-implementations"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 dirs-next = "2.0.0"
 env_logger = "0.11.8"
