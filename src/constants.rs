@@ -1,1 +1,0 @@
-pub const VENDORED_MINECRAFT_DATA_PATH: &str = "minecraft-data/data";

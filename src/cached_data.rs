@@ -1,11 +1,10 @@
-// src/cached_data.rs
-
 use crate::error::McDataError;
 use crate::structs::*; // Import all structs
 use crate::version::Version;
 use crate::loader;
 use crate::indexer;
 use crate::features;
+use crate::data_source; // Use data_source for legacy.json path
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,7 +14,6 @@ pub struct IndexedData {
     pub version: Version, // The resolved canonical version
 
     // --- Indexed Data ---
-    // ... (other indexed fields remain the same) ...
     pub blocks_array: Arc<Vec<Block>>,
     pub blocks_by_id: Arc<HashMap<u32, Block>>,
     pub blocks_by_name: Arc<HashMap<String, Block>>,
@@ -36,8 +34,8 @@ pub struct IndexedData {
     pub entities_array: Arc<Vec<Entity>>,
     pub entities_by_id: Arc<HashMap<u32, Entity>>,
     pub entities_by_name: Arc<HashMap<String, Entity>>,
-    pub mobs_by_id: Arc<HashMap<u32, Entity>>,
-    pub objects_by_id: Arc<HashMap<u32, Entity>>,
+    pub mobs_by_id: Arc<HashMap<u32, Entity>>, // Filtered entities where type=mob
+    pub objects_by_id: Arc<HashMap<u32, Entity>>, // Filtered entities where type=object
 
     pub sounds_array: Arc<Vec<Sound>>,
     pub sounds_by_id: Arc<HashMap<u32, Sound>>,
@@ -77,16 +75,16 @@ pub struct IndexedData {
     pub entity_loot_array: Arc<Vec<EntityLoot>>,
     pub entity_loot_by_name: Arc<HashMap<String, EntityLoot>>,
 
-    // --- NEW: Indexed Block Shapes ---
-    pub block_shapes_by_state_id: Arc<HashMap<u32, Vec<[f64; 6]>>>,
-    pub block_shapes_by_name: Arc<HashMap<String, Vec<[f64; 6]>>>, // Default state shape
+    // --- Indexed Block Shapes ---
+    pub block_shapes_by_state_id: Arc<HashMap<u32, Vec<[f64; 6]>>>, // stateId -> BoundingBoxes
+    pub block_shapes_by_name: Arc<HashMap<String, Vec<[f64; 6]>>>, // blockName -> Default State BoundingBoxes
 
     // --- Less Structured Data ---
     // Keep the raw data if needed for debugging or direct access
     pub block_collision_shapes_raw: Arc<Option<BlockCollisionShapes>>,
     pub tints: Arc<Option<Tints>>,
     pub language: Arc<HashMap<String, String>>,
-    pub legacy: Arc<Option<Legacy>>, // Common data
+    pub legacy: Arc<Option<Legacy>>, // Common data (loaded differently now)
 
     // --- Raw JSON Values for Complex/Varying Data ---
     pub recipes: Arc<Option<Value>>,
@@ -100,7 +98,7 @@ pub struct IndexedData {
 impl IndexedData {
     /// Loads and indexes all data for the given canonical version.
     pub fn load(version: Version) -> Result<Self, McDataError> {
-        // ... (macros and initial loading remain the same) ...
+        log::info!("Loading and indexing data for version: {} ({:?})", version.minecraft_version, version.edition);
         let major_version_str = &version.major_version;
         let edition = version.edition;
 
@@ -108,9 +106,18 @@ impl IndexedData {
         macro_rules! load_optional {
             ($key:expr, $type:ty) => {
                 match loader::load_data::<$type>(edition, major_version_str, $key) {
-                    Ok(data) => Some(data),
-                    Err(McDataError::DataPathNotFound { .. }) | Err(McDataError::DataFileNotFound { .. }) => None,
-                    Err(e) => return Err(e), // Propagate other errors
+                    Ok(data) => {
+                        log::trace!("Successfully loaded optional data for key '{}'", $key);
+                        Some(data)
+                    },
+                    Err(McDataError::DataPathNotFound { .. }) | Err(McDataError::DataFileNotFound { .. }) => {
+                         log::trace!("Optional data key '{}' not found for this version.", $key);
+                         None
+                    },
+                    Err(e) => {
+                        log::error!("Error loading optional data for key '{}': {}", $key, e);
+                        return Err(e) // Propagate other errors
+                    },
                 }
             };
         }
@@ -118,17 +125,29 @@ impl IndexedData {
         macro_rules! load_optional_value {
             ($key:expr) => {
                 match loader::load_data::<Value>(edition, major_version_str, $key) {
-                    Ok(data) => Some(data),
-                    Err(McDataError::DataPathNotFound { .. }) | Err(McDataError::DataFileNotFound { .. }) => None,
-                    Err(e) => return Err(e), // Propagate other errors
+                     Ok(data) => {
+                        log::trace!("Successfully loaded optional value for key '{}'", $key);
+                        Some(data)
+                    },
+                     Err(McDataError::DataPathNotFound { .. }) | Err(McDataError::DataFileNotFound { .. }) => {
+                         log::trace!("Optional value key '{}' not found for this version.", $key);
+                         None
+                     },
+                     Err(e) => {
+                         log::error!("Error loading optional value for key '{}': {}", $key, e);
+                         return Err(e) // Propagate other errors
+                     },
                 }
             };
         }
 
 
         // --- Load Raw Data ---
+        // Required data types (expect them to exist)
         let blocks: Vec<Block> = loader::load_data(edition, major_version_str, "blocks")?;
         let items: Vec<Item> = loader::load_data(edition, major_version_str, "items")?;
+
+        // Optional data types (use macro to handle missing files gracefully)
         let biomes: Vec<Biome> = load_optional!("biomes", Vec<Biome>).unwrap_or_default();
         let effects: Vec<Effect> = load_optional!("effects", Vec<Effect>).unwrap_or_default();
         let entities: Vec<Entity> = load_optional!("entities", Vec<Entity>).unwrap_or_default();
@@ -145,19 +164,45 @@ impl IndexedData {
         let block_collision_shapes_raw: Option<BlockCollisionShapes> = load_optional!("blockCollisionShapes", BlockCollisionShapes); // Load raw shapes
         let tints: Option<Tints> = load_optional!("tints", Tints);
         let language: HashMap<String, String> = load_optional!("language", HashMap<String, String>).unwrap_or_default();
+
+        // Optional raw values
         let recipes: Option<Value> = load_optional_value!("recipes");
         let materials: Option<Value> = load_optional_value!("materials");
         let commands: Option<Value> = load_optional_value!("commands");
         let protocol: Option<Value> = load_optional_value!("protocol");
         let protocol_comments: Option<Value> = load_optional_value!("protocolComments");
         let login_packet: Option<Value> = load_optional_value!("loginPacket");
-        let legacy: Option<Legacy> = loader::load_data_from_path(
-                &std::path::PathBuf::from(crate::constants::VENDORED_MINECRAFT_DATA_PATH)
-                    .join(format!("data/{}/common/legacy.json", edition.path_prefix()))
-            ).ok();
+
+        // Load legacy.json (common data, path constructed differently)
+        let legacy: Option<Legacy> = {
+            match data_source::get_data_root() { // Use data_source
+                Ok(data_root) => {
+                    let legacy_path = data_root.join(format!("{}/common/legacy.json", edition.path_prefix()));
+                    match loader::load_data_from_path(&legacy_path) {
+                         Ok(data) => {
+                             log::trace!("Successfully loaded legacy.json for {:?}", edition);
+                             Some(data)
+                         },
+                         Err(McDataError::IoError { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+                             log::trace!("legacy.json not found for {:?}", edition);
+                             None // File not found is expected for some editions/setups
+                         },
+                         Err(e) => {
+                             log::warn!("Failed to load legacy.json for {:?}: {}", edition, e);
+                             None // Treat other errors as non-fatal for legacy data
+                         }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Could not get data root to load legacy.json: {}", e);
+                    None // Cannot load legacy if data root isn't available
+                }
+            }
+        };
 
 
         // --- Index Data ---
+        log::debug!("Indexing loaded data...");
         let (blocks_by_id, blocks_by_name, blocks_by_state_id) = indexer::index_blocks(&blocks);
         let (items_by_id, items_by_name) = indexer::index_items(&items);
         let (biomes_by_id, biomes_by_name) = indexer::index_biomes(&biomes);
@@ -180,9 +225,11 @@ impl IndexedData {
                 indexer::index_block_shapes(&blocks_by_state_id, &blocks_by_name, collision_data)
             } else {
                 // Return empty maps if collision data doesn't exist for this version
+                log::debug!("No blockCollisionShapes data found for this version, block shapes will be empty.");
                 (HashMap::new(), HashMap::new())
             };
 
+        log::info!("Finished loading and indexing data for {} ({:?})", version.minecraft_version, version.edition);
 
         Ok(IndexedData {
             version,
@@ -254,46 +301,36 @@ impl IndexedData {
 
     /// Checks if the current version is newer than or equal to the other version string.
     pub fn is_newer_or_equal_to(&self, other_version_str: &str) -> Result<bool, McDataError> {
-        // ... (implementation remains the same) ...
         let other_version = crate::version::resolve_version(other_version_str)?;
         // Ensure comparison happens only within the same edition
         if self.version.edition == other_version.edition {
             Ok(self.version >= other_version)
         } else {
             Err(McDataError::Internal(format!(
-                "Cannot compare versions from different editions: {:?} and {:?}",
-                self.version.edition, other_version.edition
+                "Cannot compare versions from different editions: {:?} ({}) and {:?} ({})",
+                self.version.edition, self.version.minecraft_version,
+                other_version.edition, other_version.minecraft_version
             )))
         }
     }
 
     /// Checks if the current version is older than the other version string.
      pub fn is_older_than(&self, other_version_str: &str) -> Result<bool, McDataError> {
-         // ... (implementation remains the same) ...
          let other_version = crate::version::resolve_version(other_version_str)?;
           // Ensure comparison happens only within the same edition
          if self.version.edition == other_version.edition {
              Ok(self.version < other_version)
          } else {
              Err(McDataError::Internal(format!(
-                 "Cannot compare versions from different editions: {:?} and {:?}",
-                 self.version.edition, other_version.edition
+                 "Cannot compare versions from different editions: {:?} ({}) and {:?} ({})",
+                 self.version.edition, self.version.minecraft_version,
+                 other_version.edition, other_version.minecraft_version
              )))
          }
      }
 
     /// Checks support for a feature, returning the feature's value (often boolean).
     pub fn support_feature(&self, feature_name: &str) -> Result<Value, McDataError> {
-        // ... (implementation remains the same) ...
         features::get_feature_support(&self.version, feature_name)
     }
-
-    // REMOVED get_block_shape_by_state_id
-    // REMOVED get_block_shape_by_name
-
-    // Convenience methods to get specific data by name/id could be added here
-    // e.g., pub fn block_by_name(&self, name: &str) -> Option<&Block> { self.blocks_by_name.get(name) }
-    // pub fn food_by_name(&self, name: &str) -> Option<&Food> { self.foods_by_name.get(name) }
-    // pub fn particle_by_id(&self, id: u32) -> Option<&Particle> { self.particles_by_id.get(&id) }
-    // pub fn block_shape_by_name(&self, name: &str) -> Option<&Vec<[f64; 6]>> { self.block_shapes_by_name.get(name) }
 }

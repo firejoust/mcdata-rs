@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 use thiserror::Error;
-pub use crate::version::Edition;
+pub use crate::version::Edition; // Keep this
 
-// Remove Clone from derive list
-#[derive(Error, Debug)] // <--- REMOVED CLONE
+#[derive(Error, Debug)]
 pub enum McDataError {
+    // --- Versioning Errors ---
     #[error("Version string '{0}' is invalid or unsupported")]
     InvalidVersion(String),
 
@@ -15,6 +15,7 @@ pub enum McDataError {
         edition: Edition,
     },
 
+    // --- Data Loading Errors ---
     #[error("Data key '{data_key}' not found in dataPaths.json for version {mc_version} ({edition:?})")]
     DataPathNotFound {
         mc_version: String,
@@ -22,7 +23,10 @@ pub enum McDataError {
         data_key: String,
     },
 
-    #[error("I/O error accessing file {path:?}: {source}")]
+    #[error("Data file not found for key '{data_key}' at expected path pattern: {path:?}")]
+    DataFileNotFound { data_key: String, path: PathBuf },
+
+    #[error("I/O error accessing path {path:?}: {source}")]
     IoError {
         path: PathBuf,
         #[source]
@@ -36,16 +40,23 @@ pub enum McDataError {
         source: serde_json::Error,
     },
 
-    #[error("Minecraft-data directory not found at expected path: {0:?}")]
-    McDataDirNotFound(PathBuf),
+    // --- Runtime Download/Cache Errors ---
+    #[error("Could not determine a valid cache directory for application data")]
+    CacheDirNotFound,
 
-    #[error("Data file not found for key '{data_key}' at path: {path:?}")]
-    DataFileNotFound { data_key: String, path: PathBuf },
+    #[error("Failed to download minecraft-data: {0}")]
+    DownloadError(String), // Wrap reqwest/IO errors
 
+    #[error("Failed to process downloaded archive: {0}")]
+    ArchiveError(String), // Wrap zip/IO errors
+
+    #[error("Failed to verify data after download/extraction in {0:?}")]
+    DownloadVerificationFailed(PathBuf),
+
+    // --- Internal/Other Errors ---
     #[error("Internal error: {0}")]
     Internal(String),
 
-    // Add a new variant to represent errors retrieved from cache where the original cannot be cloned
     #[error("Cached operation failed previously: {0}")]
-    CachedError(String),
+    CachedError(String), // Keep if used for other caching
 }
