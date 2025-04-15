@@ -17,9 +17,11 @@ pub fn load_data_from_path<T: DeserializeOwned>(path: &Path) -> Result<T, McData
 }
 
 /// Loads data by resolving the path using dataPaths.json first.
+///
+/// Uses the major version string (e.g., "1.18") to look up the specific path suffix.
 pub fn load_data<T: DeserializeOwned>(
     edition: crate::version::Edition,
-    version: &str, // Use the major_version here
+    version: &str, // Major version string (e.g., "1.18")
     data_key: &str,
 ) -> Result<T, McDataError> {
     let path = crate::paths::get_full_data_path(edition, version, data_key)?;
