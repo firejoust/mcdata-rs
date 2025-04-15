@@ -1,6 +1,6 @@
 [package]
 name = "mcdata-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["firejoust <deity-sapling-coma@duck.com>"]
 description = "Library to access Minecraft data provided by PrismarineJS/minecraft-data"
