@@ -1,118 +1,142 @@
 # mcdata-rs
 
-A Rust library for accessing Minecraft data (blocks, items, entities, biomes, etc.) for various Java Edition (PC) and Bedrock Edition versions. It provides indexed data structures for efficient lookups and handles version resolution and caching.
+[![Crates.io](https://img.shields.io/crates/v/mcdata-rs.svg)](https://crates.io/crates/mcdata-rs)
+[![Docs.rs](https://docs.rs/mcdata-rs/badge.svg)](https://docs.rs/mcdata-rs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- Add build status badge if you have CI setup -->
 
-The data is vendored directly from the comprehensive [`PrismarineJS/minecraft-data`](https://github.com/PrismarineJS/minecraft-data) repository via the build script.
+A Rust library providing easy access to Minecraft data sourced from the comprehensive [PrismarineJS/minecraft-data](https://github.com/PrismarineJS/minecraft-data) repository. It handles automatic downloading, caching, and indexing of data for various Minecraft versions.
 
 ## Features
 
-*   Access to indexed Minecraft data (blocks, items, entities, biomes, effects, sounds, particles, foods, enchantments, etc.).
-*   Support for multiple Minecraft versions (currently focused on PC/Java Edition).
-*   Automatic data vendoring and updating from `PrismarineJS/minecraft-data` via a build script.
-*   Version resolution (e.g., "1.19" resolves to the latest release like "1.19.4", "1.8.8" resolves directly).
-*   Efficient data access through HashMaps (indexed by ID, name, state ID, etc.).
-*   Caching of loaded version data for performance. Subsequent requests for the same version are near-instant.
-*   Feature checking mechanism similar to `node-minecraft-data` to determine version capabilities.
-*   Typed data structures for most common data types (defined in `structs.rs`).
-*   Access to less structured or highly variable data (like recipes, protocol details, materials) as raw `serde_json::Value`.
+*   Access to indexed Minecraft data (Blocks, Items, Entities, Biomes, Effects, Foods, etc.) by ID and name.
+*   Automatic download and caching of `minecraft-data` files on first use.
+*   Helper functions for version comparison (`is_newer_or_equal_to`, `is_older_than`).
+*   Feature checking based on `features.json` (`support_feature`).
+*   Lazy loading and caching of data per version for efficient memory usage.
 
-## API Overview
+## Installation
 
-The primary way to interact with the library is through the `mc_data` function and the resulting `IndexedData` struct.
+Add `mcdata-rs` to your `Cargo.toml`:
 
-### Main Entry Point
+```toml
+[dependencies]
+mcdata-rs = "0.1.0" # Replace with the actual latest version from crates.io
+```
 
-*   `mc_data(version_str: &str) -> Result<Arc<IndexedData>, McDataError>`
-    *   Loads (or retrieves from cache) all available Minecraft data for the specified version string.
-    *   Accepts version strings like `"1.18.2"`, `"pc_1.16.5"`, `"1.8"`, etc.
-    *   Handles version resolution (e.g., `"1.18"` might resolve to `"1.18.2"`).
-    *   Returns a thread-safe `Arc` containing the indexed data upon success.
-    *   Returns an `McDataError` if the version is invalid, data files are missing/corrupt, or other loading issues occur.
+## Data Cache
 
-### `IndexedData` Struct
+The library automatically downloads the necessary `minecraft-data` files on the first run for a given version (or if the cache is missing/corrupted). This data is stored in your system's standard cache directory:
 
-This struct holds all the loaded and indexed data for a specific Minecraft version. It is wrapped in an `Arc` for cheap cloning and sharing across threads. Key fields include:
+*   **Linux:** `~/.cache/mcdata-rs/minecraft-data`
+*   **macOS:** `~/Library/Caches/mcdata-rs/minecraft-data`
+*   **Windows:** `%LOCALAPPDATA%\mcdata-rs\minecraft-data`
 
-*   `version: Version`: Contains detailed information about the resolved canonical version (Minecraft version string, protocol version, data version, edition, etc.).
-*   **Indexed Data Maps:** Provides fast lookups using `Arc<HashMap<...>>`:
-    *   `blocks_by_id`, `blocks_by_name`, `blocks_by_state_id`
-    *   `items_by_id`, `items_by_name`
-    *   `biomes_by_id`, `biomes_by_name`
-    *   `effects_by_id`, `effects_by_name`
-    *   `entities_by_id`, `entities_by_name`, `mobs_by_id`, `objects_by_id`
-    *   `sounds_by_id`, `sounds_by_name`
-    *   `particles_by_id`, `particles_by_name`
-    *   `attributes_by_name`, `attributes_by_resource`
-    *   `instruments_by_id`, `instruments_by_name`
-    *   `foods_by_id`, `foods_by_name`
-    *   `enchantments_by_id`, `enchantments_by_name`
-    *   `map_icons_by_id`, `map_icons_by_name`
-    *   `windows_by_id`, `windows_by_name`
-    *   `block_loot_by_name`
-    *   `entity_loot_by_name`
-    *   `block_shapes_by_state_id`, `block_shapes_by_name` (mapping block state IDs or default block names to collision shape bounding boxes `Vec<[f64; 6]>`)
-*   **Data Arrays:** Provides access to the original loaded data as `Arc<Vec<...>>`:
-    *   `blocks_array`, `items_array`, `biomes_array`, `effects_array`, `entities_array`, `sounds_array`, `particles_array`, `attributes_array`, `instruments_array`, `foods_array`, `enchantments_array`, `map_icons_array`, `windows_array`, `block_loot_array`, `entity_loot_array`
-*   **Other Structured Data:**
-    *   `language: Arc<HashMap<String, String>>`: Language translations.
-    *   `tints: Arc<Option<Tints>>`: Biome color tinting data.
-    *   `legacy: Arc<Option<Legacy>>`: Legacy block/item ID mappings.
-    *   `block_collision_shapes_raw: Arc<Option<BlockCollisionShapes>>`: The raw, unindexed block collision shape data.
-*   **Raw JSON Values:** For data that varies significantly between versions or lacks a stable structure (`Arc<Option<serde_json::Value>>`):
-    *   `recipes`
-    *   `materials`
-    *   `commands`
-    *   `protocol` (from `protocol.json`)
-    *   `protocol_comments` (from `protocolComments.json`)
-    *   `login_packet` (from `loginPacket.json`)
-*   **Methods:**
-    *   `is_newer_or_equal_to(&self, other_version_str: &str) -> Result<bool, McDataError>`: Compares the current data's version against another version string.
-    *   `is_older_than(&self, other_version_str: &str) -> Result<bool, McDataError>`: Compares the current data's version against another version string.
-    *   `support_feature(&self, feature_name: &str) -> Result<serde_json::Value, McDataError>`: Checks if the current version supports a given feature (from `features.json`) and returns its value (often boolean, but can be other JSON types).
+The initial download might take a moment depending on your network connection. Subsequent runs using the same version will load data instantly from the cache.
 
-### Helper Functions
+*(Optional)*: For debugging download or cache issues, enable logging by setting the `RUST_LOG` environment variable (e.g., `RUST_LOG=mcdata_rs=debug cargo run`).
 
-*   `supported_versions(edition: Edition) -> Result<Vec<String>, McDataError>`
-    *   Returns a list of Minecraft version strings known to the library for the specified `Edition` (e.g., `Edition::Pc`).
+## API and Usage Examples
 
-### Core Structs and Enums
+The main entry point is the `mc_data(&str)` function, which takes a version string and returns a `Result<Arc<IndexedData>, McDataError>`. The `IndexedData` struct contains all the loaded and indexed data for that version, wrapped in `Arc` for efficient sharing.
 
-*   `structs::*`: Contains the definitions for data types like `Block`, `Item`, `Entity`, `Biome`, `Feature`, `VersionInfo`, etc. These are re-exported at the crate root.
-*   `Edition`: Enum representing the Minecraft edition (`Pc` or `Bedrock`).
-*   `McDataError`: Enum representing all possible errors returned by the library functions.
+```rust
+use mcdata_rs::*; // Import necessary items
+use std::sync::Arc;
 
-## Error Handling
+fn main() -> Result<(), McDataError> {
+    // --- Get Data for a Specific Version ---
+    // Accepts version strings like "1.18.2", "pc_1.16.5", "1.19" (latest release), etc.
+    // This might download data on the first run for this version.
+    let data_1_18_2: Arc<IndexedData> = mc_data("1.18.2")?;
+    println!("Loaded data for Minecraft PC {}", data_1_18_2.version.minecraft_version);
 
-Most public functions return `Result<T, McDataError>`. The `McDataError` enum covers various failure scenarios:
+    // --- Accessing Indexed Data ---
 
-*   `InvalidVersion`: The provided version string could not be resolved.
-*   `VersionNotFound`: A specific resolved version's data path mapping is missing.
-*   `DataPathNotFound`: A specific data key (like "blocks") is missing for a version in `dataPaths.json`.
-*   `IoError`: An error occurred during file reading.
-*   `JsonParseError`: An error occurred during JSON deserialization.
-*   `McDataDirNotFound`: The vendored data directory was not found (build script issue).
-*   `DataFileNotFound`: A specific data file (e.g., `blocks.json`) was not found at the expected path.
-*   `Internal`: An unexpected internal error occurred.
-*   `CachedError`: An operation failed previously and the error state was cached (original error details might be lost).
+    // By Name (most common for blocks, items, entities, etc.)
+    if let Some(stone) = data_1_18_2.blocks_by_name.get("stone") {
+        println!("Stone Info:");
+        println!("  ID: {}", stone.id);
+        println!("  Display Name: {}", stone.display_name);
+        println!("  Hardness: {:?}", stone.hardness);
+        println!("  Diggable: {}", stone.diggable);
+    }
 
-## Versioning
+    if let Some(stick) = data_1_18_2.items_by_name.get("stick") {
+        println!("Stick stack size: {}", stick.stack_size);
+    }
 
-The library resolves version strings based on the `protocolVersions.json` file for each edition.
+    if let Some(zombie) = data_1_18_2.entities_by_name.get("zombie") {
+        println!("Zombie category: {:?}", zombie.category);
+    }
 
-*   Specific versions like `"1.18.2"` or `"pc_1.16.5"` are resolved directly.
-*   Major versions like `"1.19"` are resolved to the *latest known release* within that major version (e.g., `"1.19.4"`).
-*   Prefixes (`pc_`, `bedrock_`) specify the edition. If no prefix is given, `pc` (Java Edition) is assumed.
+    // By ID
+    if let Some(block_id_1) = data_1_18_2.blocks_by_id.get(&1) {
+        // Note: Block ID 1 is typically stone in many versions, but not guaranteed.
+        println!("Block with ID 1: {}", block_id_1.name);
+    }
 
-The resolved version information is available in the `IndexedData.version` field (`Version` struct).
+    // By State ID (for blocks >= 1.13)
+    let stone_block = data_1_18_2.blocks_by_name.get("stone").unwrap(); // Assume stone exists
+    if let Some(block_from_state) = data_1_18_2.blocks_by_state_id.get(&stone_block.default_state) {
+         println!("Block for default state {}: {}", stone_block.default_state, block_from_state.name);
+    }
 
-## Data Source
+    // Accessing Arrays (less common, but available)
+    println!("First loaded block: {}", data_1_18_2.blocks_array[0].name);
+    println!("Total loaded items: {}", data_1_18_2.items_array.len());
 
-The Minecraft data is sourced from the [`PrismarineJS/minecraft-data`](https://github.com/PrismarineJS/minecraft-data) repository. The `build.rs` script clones this repository (or pulls updates if already cloned) into the `target` directory during the build process and copies the relevant `data` directory into `src/minecraft_data_vendored`.
+    // --- Using Helper Functions ---
 
-## Building
+    // Version Comparison
+    let data_1_16_5 = mc_data("1.16.5")?;
+    assert!(data_1_18_2.is_newer_or_equal_to("1.16.5")?);
+    assert!(data_1_16_5.is_older_than("1.18.2")?);
+    assert!(!data_1_18_2.is_older_than("1.18.2")?);
 
-*   **Git:** You must have `git` installed and available in your system's `PATH` for the build script to clone/update the `minecraft-data` repository.
-*   **Network:** The build script requires network access to clone/pull from GitHub.
-*   **Dependencies:** The build script uses the `fs_extra` crate.
+    // Feature Checking (based on features.json)
+    // Check if dimensions were represented as an Integer in 1.15.2
+    let data_1_15_2 = mc_data("1.15.2")?;
+    let dim_is_int_1_15 = data_1_15_2.support_feature("dimensionIsAnInt")?;
+    assert_eq!(dim_is_int_1_15, serde_json::Value::Bool(true));
 
-The first build will take longer as it needs to clone the repository. Subsequent builds will be faster, only pulling changes if the remote repository has been updated. The vendored data is included directly in the crate's source tree after the build script runs.
+    // Check the same feature in 1.18.2
+    let dim_is_int_1_18 = data_1_18_2.support_feature("dimensionIsAnInt")?;
+    assert_eq!(dim_is_int_1_18, serde_json::Value::Bool(false));
+
+    // Check a feature with a value
+    let metadata_index = data_1_18_2.support_feature("metadataIxOfItem")?;
+    assert_eq!(metadata_index, serde_json::Value::Number(8.into())); // Value might change in data updates
+
+    // --- Listing Supported Versions ---
+    let pc_versions = supported_versions(Edition::Pc)?;
+    println!("\nSupported PC Versions (Oldest to Newest):");
+    // Print first 5 and last 5 for brevity
+    for v in pc_versions.iter().take(5) {
+        println!(" - {}", v);
+    }
+    println!("...");
+    for v in pc_versions.iter().rev().take(5).rev() {
+         println!(" - {}", v);
+    }
+
+    // let bedrock_versions = supported_versions(Edition::Bedrock)?;
+    // println!("\nSupported Bedrock Versions: {:?}", bedrock_versions);
+
+
+    // --- Accessing Raw Data (Example: Recipes) ---
+    if let Some(recipes) = data_1_18_2.recipes.as_ref() {
+        // recipes is a serde_json::Value, access it as needed
+        if let Some(crafting_table_recipes) = recipes.get("minecraft:crafting_table") {
+             println!("\nFound {} recipes for crafting_table", crafting_table_recipes.as_array().map_or(0, |a| a.len()));
+        }
+    }
+
+    Ok(())
+}
+
+```
+
+## License
+
+Licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
